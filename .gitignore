@@ -11,3 +11,6 @@ env/
 
 # Ignore OS files
 .DS_Store
+
+# Ignore database files
+data.sqlite3
