@@ -11,4 +11,22 @@ BASE_DIR = Path(__file__).resolve().parent
 # SQLite database file
 # getenv is used to get the environment variable DB_PATH
 # if the environment variable is not set, use the default path
-DB_PATH = os.getenv("DB_PATH", BASE_DIR / "data.sqlite")
+DB_PATH = os.getenv("DB_PATH", BASE_DIR / "data.sqlite3")
+
+BSE_BASE_URL = "https://api.bseindia.com/BseIndiaAPI/api/AnnGetData/w"
+BSE_PDF_URL = "https://www.bseindia.com/xml-data/corpfiling/AttachHis/"
+TIMEOUT = 30
+# BSE headers are used to pass BSE’s checks
+# User-Agent is used to identify the browser
+# Accept is used to identify the content type
+# Referer is used to identify the request is coming from BSE internally
+BSE_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                  "AppleWebKit/537.36 (KHTML, like Gecko) "
+                  "Chrome/139.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Referer": "https://www.bseindia.com/",
+    "Origin": "https://www.bseindia.com",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br, zstd",
+}

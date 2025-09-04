@@ -30,7 +30,7 @@ def insert_document(doc):
             created_at, announcement_date, updated_at, processing_status
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            doc["uuid"], doc["company_name"], doc["script_code"],
+            doc["transcript_uuid"], doc["company_name"], doc["script_code"],
             doc["pdf_url"], doc["pdf_url_sha256"], doc["json_text"],
             now_ist_str(), doc["announcement_date"], now_ist_str(), "discovered"
         ))
