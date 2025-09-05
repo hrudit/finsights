@@ -24,15 +24,27 @@ def get_conn():
 def insert_document(doc):
     with get_conn() as conn:
         conn.execute("""
-        INSERT INTO documents (
-            transcript_uuid, company_name, script_code,
-            pdf_url, pdf_url_sha256, json_text,
-            created_at, announcement_date, updated_at, processing_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO documents (
+                transcript_uuid,
+                company_name,
+                script_code,
+                pdf_url,
+                pdf_url_sha256,
+                created_at,
+                announcement_date,
+                updated_at,
+                processing_status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            doc["transcript_uuid"], doc["company_name"], doc["script_code"],
-            doc["pdf_url"], doc["pdf_url_sha256"], doc["json_text"],
-            now_ist_str(), doc["announcement_date"], now_ist_str(), "discovered"
+            doc["transcript_uuid"],
+            doc["company_name"],
+            doc["script_code"],
+            doc["pdf_url"],
+            doc["pdf_url_sha256"],
+            now_ist_str(),
+            doc["announcement_date"],
+            now_ist_str(),
+            "discovered"
         ))
 
 def get_document_by_transcript_uuid(transcript_uuid: str):

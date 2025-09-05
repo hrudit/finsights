@@ -4,7 +4,6 @@ CREATE TABLE documents (
     script_code     TEXT NOT NULL,
     pdf_url         TEXT NOT NULL,
     pdf_url_sha256  TEXT NOT NULL UNIQUE,
-    json_text       TEXT NOT NULL,
     created_at      TEXT NOT NULL,
     announcement_date TEXT NOT NULL,
     updated_at      TEXT NOT NULL,

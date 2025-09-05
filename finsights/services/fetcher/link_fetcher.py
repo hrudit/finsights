@@ -1,24 +1,22 @@
 import asyncio
-import aiohttp
-import requests
-import sqlite3  
-from finsights.db.connection import insert_document, debug_print_all_documents
-from datetime import date, datetime
 import hashlib
 import json
-import uuid
-from finsights.config import BSE_BASE_URL, BSE_HEADERS, BSE_PDF_URL, TIMEOUT
 import math
+import sqlite3
+from time import perf_counter
+import uuid
+from datetime import date, datetime
+
+import aiohttp
+import requests
+
+from finsights.config import BSE_BASE_URL, BSE_HEADERS, BSE_PDF_URL, TIMEOUT, MAX_CONCURRENT_REQUESTS, BSE_FIXED_PARAMS
+from finsights.db.connection import insert_document, debug_print_all_documents
 
 def _format_bse_date(d: date) -> str:
     return d.strftime("%Y%m%d")
 
-BSE_FIXED_PARAMS = {
-    "strCat": "-1",        # all categories
-    "strType": "C",        # company announcements
-    "strToCompany": "0",   # all companies
-    "strSearch": "P",       # empty search
-}
+
 def save_response_json(resp, filename="debug.json"):
     """Save the requests.Response JSON payload to a file for inspection."""
     data = resp.json()
@@ -26,24 +24,30 @@ def save_response_json(resp, filename="debug.json"):
         json.dump(data, f, ensure_ascii=False, indent=2)
     print(f"Saved JSON to {filename}")
 
-# format for date is DD/MM/YYYY
+# Format for date is DD/MM/YYYY
 # We will need to get the JSON and populate the DB with the documents
 # Each fetch page is very slow with most of the time waiting for BSE to respond.
 # We are using asyncio to fetch the pages in parallel so we have a bunch of calls waiting together on BSE.
-# each call can wait indepdently and not block the other calls.
-# 30 pages sequentially would take 30 * 3 = 90 seconds.
-# 30 pages async with the first one done seperately to get the number of pages,
-# with the remaining 29 pages async, and 10 max at a time to respect bse we have 3*3 + 3 = 12 seconds.
-async def _fetch_page(session: aiohttp.ClientSession, prev_date: date, to_date: date, page: int) -> dict[str, any]:
+# Each call can wait independently and not block the other calls.
+# 30 pages sequentially would take 30 * 15 = 450 seconds.
+# 30 pages async with the first one done separately to get the number of pages,
+# with the remaining 29 pages async, and 10 max at a time to respect BSE we have 3*15 + 15 = 60 seconds.
+async def _fetch_page(
+    session: aiohttp.ClientSession, 
+    prev_date: date, 
+    to_date: date, 
+    page: int
+) -> dict[str, any]:
     params = {
         **BSE_FIXED_PARAMS,
         "strPrevDate": _format_bse_date(prev_date),
         "strToDate": _format_bse_date(to_date),
         "Pageno": page,
     }
-    async with session.get(BSE_BASE_URL, params=params) as resp:
+    async with session.get(BSE_BASE_URL, params=params, timeout=TIMEOUT) as resp:
         resp.raise_for_status()
         return await resp.json()
+
 
 def _is_transcript(ann: dict) -> bool:
     newssub = (ann.get("NEWSSUB") or "").strip().lower()
@@ -51,6 +55,7 @@ def _is_transcript(ann: dict) -> bool:
     
     looks_like_transcript = "earnings call transcript" in newssub
     return looks_like_transcript and attachment.endswith(".pdf")
+
 
 def filter_transcripts_from_json(json: dict) -> list:
     transcripts = []
@@ -62,27 +67,45 @@ def filter_transcripts_from_json(json: dict) -> list:
 
 
 async def create_transcript_list(prev_date: date, to_date: date):
-    async with aiohttp.ClientSession(headers=BSE_HEADERS) as session:
+    # 🔹 TCPConnector controls the connection pool,
+    # how many outgoing connections a session can have
+
+    connector = aiohttp.TCPConnector(limit_per_host=MAX_CONCURRENT_REQUESTS)
+    async with aiohttp.ClientSession(headers=BSE_HEADERS, connector=connector) as session:
         transcript_list = []
         page = 1
         
         json_page_1 = await _fetch_page(session, prev_date, to_date, page)
         transcript_list.extend(filter_transcripts_from_json(json_page_1))
 
-        page_size = len(json_page_1.get("Table",[]))
+        page_size = len(json_page_1.get("Table", []))
         total_rows = json_page_1["Table1"][0]["ROWCNT"]
         total_pages = max(1, math.ceil(total_rows / page_size))
-        sem = asyncio.Semaphore(10)
+        sem = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
-        # we are introducing this nested function wrapper so we can cleanly pass the semaphore
+        # We are introducing this nested function wrapper so we can cleanly pass the semaphore
         # and filter on the data to get just the transcripts.
+        # We catch errors and return empty lists to avoid stopping the gather call and processing as many
+        # pages as possible.
         async def fetch_and_filter(p: int) -> list[dict]:
-                async with sem:
+            async with sem:
+                try:
+                    start_time = perf_counter()
                     data = await _fetch_page(session, prev_date, to_date, p)
-                    print("Retrieved page: ", p)
+                    end_time = perf_counter()
+                    print(f"Time taken to retrieve page {p}: {end_time - start_time:.2f} seconds")
                     transcript_list = filter_transcripts_from_json(data)
                     print("Number of transcripts: ", len(transcript_list))
                     return transcript_list
+                except asyncio.TimeoutError:
+                    print(f"Timeout error on page {p} - returning empty results")
+                    return []
+                except aiohttp.ClientTimeout:
+                    print(f"Client timeout on page {p} - returning empty results")
+                    return []
+                except Exception as e:
+                    print(f"Error fetching page {p}: {e} - returning empty results")
+                    return []
 
         if total_pages > 1:
             list_of_filtered_json_pages = await asyncio.gather(
@@ -95,20 +118,8 @@ async def create_transcript_list(prev_date: date, to_date: date):
                 transcript_list.extend(filtered_json_page)
 
     return transcript_list
-    
-    # page = 2
-    # while True:
-    #     json_obj = fetch_json_from_bse(prev_date, to_date, page)
-    #     print("does the page have rows?", len(json_obj.get("Table",[])) > 0)
-    #     print("page", page)
-    #     print("Total rows", json_obj["Table1"][0]["ROWCNT"])
-    #     print("Number of records in this page",len(json_obj.get("Table",[])))
-    #     if not len(json_obj.get("Table",[])) > 0:
-    #         break
-    #     transcript_list.extend(filter_transcripts_from_json(json_obj))
-    #     page += 1
 
-    return transcript_list
+
 
 def transcripts_to_dbstate(transcript_list: list) -> list:
     transcript_ids = []
@@ -122,7 +133,6 @@ def transcripts_to_dbstate(transcript_list: list) -> list:
             "script_code": transcript["SCRIP_CD"],
             "pdf_url": pdf_url,
             "pdf_url_sha256": hashlib.sha256(pdf_url.encode()).hexdigest(),
-            "json_text": json.dumps(transcript),
             "announcement_date": formatted,
         }
         try:
@@ -136,8 +146,15 @@ def transcripts_to_dbstate(transcript_list: list) -> list:
 
 
 if __name__ == "__main__":
-    transcript_list = asyncio.run(create_transcript_list(date(2025, 1, 31), date(2025, 1, 31)))
-    print(transcript_list)
-    transcript_ids = transcripts_to_dbstate(transcript_list)
-    print(transcript_ids)
-    debug_print_all_documents()
+
+    start_time = perf_counter()
+    transcript_list = asyncio.run(
+        create_transcript_list(date(2025, 1, 29), date(2025, 1, 29))
+    )
+    end_time = perf_counter()
+    # print(transcript_list)
+    # transcript_ids = transcripts_to_dbstate(transcript_list)
+    # print(transcript_ids)
+    # debug_print_all_documents()
+    
+    print(f"Total execution time with semaphore {MAX_CONCURRENT_REQUESTS}: {end_time - start_time:.2f} seconds")
