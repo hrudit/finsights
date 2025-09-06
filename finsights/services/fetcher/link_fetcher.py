@@ -10,7 +10,7 @@ from datetime import date, datetime
 import aiohttp
 import requests
 
-from finsights.config import BSE_BASE_URL, BSE_HEADERS, BSE_PDF_URL, TIMEOUT, MAX_CONCURRENT_REQUESTS, BSE_FIXED_PARAMS
+from finsights.config import BSE_BASE_URL, BSE_HEADERS, BSE_PDF_URL, TIMEOUT, MAX_CONCURRENT_JSON_REQUESTS, BSE_FIXED_PARAMS
 from finsights.db.connection import insert_document, debug_print_all_documents
 
 def _format_bse_date(d: date) -> str:
@@ -70,7 +70,7 @@ async def create_transcript_list(prev_date: date, to_date: date):
     # 🔹 TCPConnector controls the connection pool,
     # how many outgoing connections a session can have
 
-    connector = aiohttp.TCPConnector(limit_per_host=MAX_CONCURRENT_REQUESTS)
+    connector = aiohttp.TCPConnector(limit_per_host=MAX_CONCURRENT_JSON_REQUESTS)
     async with aiohttp.ClientSession(headers=BSE_HEADERS, connector=connector) as session:
         transcript_list = []
         page = 1
@@ -81,7 +81,7 @@ async def create_transcript_list(prev_date: date, to_date: date):
         page_size = len(json_page_1.get("Table", []))
         total_rows = json_page_1["Table1"][0]["ROWCNT"]
         total_pages = max(1, math.ceil(total_rows / page_size))
-        sem = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+        sem = asyncio.Semaphore(MAX_CONCURRENT_JSON_REQUESTS)
 
         # We are introducing this nested function wrapper so we can cleanly pass the semaphore
         # and filter on the data to get just the transcripts.
@@ -140,7 +140,7 @@ def transcripts_to_dbstate(transcript_list: list) -> list:
             transcript_ids.append(dbstate["transcript_uuid"])
         except sqlite3.IntegrityError:
             # Duplicate (pdf_url_sha256 UNIQUE) — skip silently or log
-            print(f"Duplicate transcript {pdf_url} found for {transcript['SLONGNAME']}")
+            print(f"Error saving transcript {pdf_url} for {transcript['SLONGNAME']}")
             continue
     return transcript_ids
 
@@ -157,4 +157,4 @@ if __name__ == "__main__":
     # print(transcript_ids)
     # debug_print_all_documents()
     
-    print(f"Total execution time with semaphore {MAX_CONCURRENT_REQUESTS}: {end_time - start_time:.2f} seconds")
+    print(f"Total execution time with semaphore {MAX_CONCURRENT_JSON_REQUESTS}: {end_time - start_time:.2f} seconds")

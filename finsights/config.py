@@ -16,7 +16,9 @@ DB_PATH = os.getenv("DB_PATH", BASE_DIR / "data.sqlite3")
 BSE_BASE_URL = "https://api.bseindia.com/BseIndiaAPI/api/AnnGetData/w"
 BSE_PDF_URL = "https://www.bseindia.com/xml-data/corpfiling/AttachHis/"
 TIMEOUT = 30
-MAX_CONCURRENT_REQUESTS = 10
+MAX_CONCURRENT_JSON_REQUESTS = 10
+MAX_CONCURRENT_PDF_REQUESTS = 3
+MAX_CONCURRENT_CONVERSION_WORKERS = 10
 # BSE headers are used to pass BSE’s checks
 # User-Agent is used to identify the browser
 # Accept is used to identify the content type
@@ -38,3 +40,6 @@ BSE_FIXED_PARAMS = {
     "strToCompany": "0",   # all companies
     "strSearch": "P",      # PDF search
 }
+
+PDF_DIR = BASE_DIR / "pdfs"
+TEXT_DIR = BASE_DIR / "text_files"

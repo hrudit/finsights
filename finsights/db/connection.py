@@ -69,6 +69,16 @@ def debug_print_all_documents():
         for row in conn.execute("SELECT * FROM documents").fetchall():
             print(dict(row))
 
+def get_pdf_url(transcript_uuid: str):
+    with get_conn() as conn:
+        row = conn.execute("SELECT pdf_url FROM documents WHERE transcript_uuid=?", (transcript_uuid,)).fetchone()
+        return row[0] if row else None
+
+def get_downloaded_documents() -> list[str]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM documents WHERE processing_status='downloaded'").fetchall()
+        return [row["transcript_uuid"] for row in rows]
+
 def mark_document_downloaded(transcript_uuid: str, pdf_file_name: str):
     """discovered -> downloaded"""
     # We update first to downloading to avoid race conditions
