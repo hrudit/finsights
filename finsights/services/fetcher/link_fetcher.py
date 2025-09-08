@@ -1,28 +1,26 @@
 import asyncio
 import hashlib
-import json
 import math
 import sqlite3
 from time import perf_counter
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import aiohttp
-import requests
 
-from finsights.config import BSE_BASE_URL, BSE_HEADERS, BSE_PDF_URL, TIMEOUT, MAX_CONCURRENT_JSON_REQUESTS, BSE_FIXED_PARAMS
+from finsights.config import BSE_BASE_URL, BSE_HEADERS, BSE_PDF_URL_PAST, BSE_PDF_URL_CURRENT, TIMEOUT, MAX_CONCURRENT_JSON_REQUESTS, BSE_FIXED_PARAMS
 from finsights.db.connection import insert_document, debug_print_all_documents
 
 def _format_bse_date(d: date) -> str:
     return d.strftime("%Y%m%d")
 
 
-def save_response_json(resp, filename="debug.json"):
-    """Save the requests.Response JSON payload to a file for inspection."""
-    data = resp.json()
-    with open(filename, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    print(f"Saved JSON to {filename}")
+# def save_response_json(resp, filename="debug.json"):
+#     """Save the requests.Response JSON payload to a file for inspection."""
+#     data = resp.json()
+#     with open(filename, "w", encoding="utf-8") as f:
+#         json.dump(data, f, ensure_ascii=False, indent=2)
+#     print(f"Saved JSON to {filename}")
 
 # Format for date is DD/MM/YYYY
 # We will need to get the JSON and populate the DB with the documents
@@ -42,7 +40,7 @@ async def _fetch_page(
         **BSE_FIXED_PARAMS,
         "strPrevDate": _format_bse_date(prev_date),
         "strToDate": _format_bse_date(to_date),
-        "Pageno": page,
+        "pageno": page,
     }
     async with session.get(BSE_BASE_URL, params=params, timeout=TIMEOUT) as resp:
         resp.raise_for_status()
@@ -124,8 +122,13 @@ async def create_transcript_list(prev_date: date, to_date: date):
 def transcripts_to_dbstate(transcript_list: list) -> list:
     transcript_ids = []
     for transcript in transcript_list:
-        pdf_url = BSE_PDF_URL + transcript["ATTACHMENTNAME"]
+        
         dt = datetime.strptime(transcript["NEWS_DT"], "%Y-%m-%dT%H:%M:%S.%f")
+        if dt < datetime.now() - timedelta(days=60):
+            pdf_url = BSE_PDF_URL_PAST + transcript["ATTACHMENTNAME"]
+        else:
+            pdf_url = BSE_PDF_URL_CURRENT + transcript["ATTACHMENTNAME"]
+
         formatted = dt.strftime("%Y-%m-%dT%H:%M:%S")
         dbstate = {
             "transcript_uuid": str(uuid.uuid4()),

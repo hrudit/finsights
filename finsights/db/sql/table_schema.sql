@@ -23,3 +23,8 @@ CREATE TABLE documents (
     insights_created_at TEXT DEFAULT NULL,
     error_message TEXT DEFAULT NULL
 );
+
+CREATE TABLE tool_metadata (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);

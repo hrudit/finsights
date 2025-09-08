@@ -2,7 +2,7 @@ from time import perf_counter
 import aiohttp  
 import asyncio
 from pathlib import Path
-from finsights.config import PDF_DIR, MAX_CONCURRENT_PDF_REQUESTS
+from finsights.config import PDF_DIR, MAX_CONCURRENT_PDF_REQUESTS, PDF_DOWNLOAD_HEADERS
 from finsights.db.connection import mark_document_failed, mark_document_downloaded, get_pdf_url
 
 def get_pdf_path(transcript_uuid: str) -> Path:
@@ -13,7 +13,7 @@ async def download_pdfs(transcript_uuids: list[str]):
     start = perf_counter()
     connector = aiohttp.TCPConnector(limit_per_host=MAX_CONCURRENT_PDF_REQUESTS)
     sem = asyncio.Semaphore(MAX_CONCURRENT_PDF_REQUESTS)
-    async with aiohttp.ClientSession(connector=connector) as session:
+    async with aiohttp.ClientSession(connector=connector, headers=PDF_DOWNLOAD_HEADERS) as session:
         async def fetch_pdf_wrapper(url: str, transcript_uuid: str):
             async with sem:
                 try:  

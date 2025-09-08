@@ -5,7 +5,7 @@ from datetime import date
 from unittest.mock import AsyncMock, patch, MagicMock
 import aiohttp
 
-from finsights.config import BSE_PDF_URL
+from finsights.config import BSE_PDF_URL_PAST
 
 from finsights.services.fetcher.link_fetcher import (
     _format_bse_date,
@@ -29,7 +29,7 @@ def create_mock_session_with_responses(responses_by_page=None, errors_by_page=No
         Tuple of (mock_session_class, mock_session) for use with patch
     """
     def mock_get_response(*args, **kwargs):
-        page = kwargs.get('params', {}).get('Pageno', 1)
+        page = kwargs.get('params', {}).get('pageno', 1)
         
         # Check if this page should raise an error
         if errors_by_page and page in errors_by_page:
@@ -359,7 +359,7 @@ class TestTranscriptsToDbstate:
         assert row is not None
         assert row["company_name"] == "Test Company Ltd"
         assert row["script_code"] == "12345"
-        assert row["pdf_url"] == ( BSE_PDF_URL + "test_transcript.pdf" )
+        assert row["pdf_url"] == ( BSE_PDF_URL_PAST + "test_transcript.pdf" )
         assert row["announcement_date"] == "2025-01-29T10:00:00"
         assert row["processing_status"] == "discovered"
     

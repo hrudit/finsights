@@ -1,6 +1,6 @@
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from finsights.config import DB_PATH
 from zoneinfo import ZoneInfo
@@ -53,6 +53,20 @@ def get_document_by_transcript_uuid(transcript_uuid: str):
         SELECT * FROM documents WHERE transcript_uuid = ?
         """, (transcript_uuid,)).fetchone()
         return dict(row) if row else None
+
+def get_documents_before_date(date: date):
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT * FROM documents WHERE announcement_date < ?
+        """, (date.strftime("%Y-%m-%d"),)).fetchall()
+        return [dict(row) for row in rows]
+
+
+def delete_document(transcript_uuid: str):
+    with get_conn() as conn:
+        conn.execute("""
+            DELETE FROM documents WHERE transcript_uuid = ?
+        """, (transcript_uuid,))
 
 def list_documents_by_status(status, limit=10):
     with get_conn() as conn:
@@ -140,3 +154,19 @@ def mark_document_failed(transcript_uuid: str, error_message: str):
             """,
             (now_ist_str(), error_message, transcript_uuid)
         )
+
+def set_tool_metadata(key: str, value: str):
+    with get_conn() as conn:
+        # update if key already exists
+        cur =conn.execute("""
+            UPDATE tool_metadata SET value=? WHERE key=?
+        """, (value, key))
+        if cur.rowcount == 0:
+            conn.execute("""
+                INSERT INTO tool_metadata (key, value) VALUES (?, ?)
+            """, (key, value))
+
+def get_tool_metadata(key: str):
+    with get_conn() as conn:
+        row = conn.execute("SELECT value FROM tool_metadata WHERE key=?", (key,)).fetchone()
+        return row[0] if row else None
